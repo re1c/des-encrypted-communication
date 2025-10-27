@@ -1,113 +1,111 @@
-# Implementasi Komunikasi Client-Server Terenkripsi DES (Cross-Platform)
+# Implementasi Sistem Komunikasi Client-Server dengan Enkripsi DES
 
-Proyek ini adalah implementasi sistem komunikasi dua arah (*bidirectional*) antara dua *device* yang diamankan menggunakan algoritma enkripsi **Data Encryption Standard (DES)**. Sistem ini dibangun dengan arsitektur **Client-Server** menggunakan C++, kompatibel untuk **Windows** dan **Linux**.
+## Abstrak
+
+Proyek ini merupakan implementasi dari sebuah sistem komunikasi *client-server* berbasis teks yang diamankan menggunakan algoritma kriptografi simetris Data Encryption Standard (DES). Sistem ini dirancang untuk dapat beroperasi secara lintas platform (Windows dan Linux) dan mengimplementasikan model komputasi konkuren untuk memungkinkan komunikasi dua arah secara simultan. Tujuan dari proyek ini adalah untuk mendemonstrasikan pemahaman dan penerapan konsep-konsep fundamental dalam keamanan informasi dan pemrograman jaringan, termasuk kriptografi, soket TCP/IP, dan *multithreading*.
 
 | Nama                   | NRP        | Kelas |
 | ---------------------- | ---------- | ----- |
 | Naswan Nashir Ramadhan | 5025231246 | C     |
 
-> **Peringatan Keamanan Penting**
-> Implementasi ini dibuat untuk **tujuan edukasi dan studi akademis**. DES merupakan standar enkripsi legasi yang dianggap **tidak aman** untuk aplikasi modern. **Jangan gunakan kode ini untuk mengamankan data sensitif pada sistem produksi.**
+> **Catatan Keamanan:** Implementasi ini dirancang secara spesifik untuk tujuan edukasional. Algoritma DES merupakan standar enkripsi legasi yang memiliki kerentanan dan tidak direkomendasikan untuk pengamanan data pada aplikasi modern.
 
-## 1. Arsitektur Sistem
+---
 
-Sistem ini terdiri dari dua komponen utama:
+## 1. Fungsionalitas Sistem
 
-1.  **Server (`server.exe` di Windows, `server` di Linux):**
-    *   Berperan sebagai pendengar pasif. Menunggu koneksi masuk dari klien pada *port* jaringan yang ditentukan.
+Sistem yang diimplementasikan memiliki fungsionalitas sebagai berikut:
 
-2.  **Client (`client.exe` di Windows, `client` di Linux):**
-    *   Berperan sebagai penghubung aktif. Menghubungi alamat IP dan *port* server untuk memulai komunikasi.
+* **Enkripsi Data:** Seluruh data percakapan yang ditransmisikan melalui jaringan dienkripsi menggunakan algoritma DES.
+* **Komunikasi Dua Arah:** Sistem memungkinkan pertukaran pesan secara *full-duplex*, di mana pengguna dapat mengirim dan menerima pesan secara bersamaan.
+* **Kompatibilitas Lintas Platform:** Aplikasi dapat dikompilasi dan dijalankan pada sistem operasi Windows dan Linux tanpa perubahan kode sumber.
+* **Identitas Pengguna Dinamis:** Setiap pengguna dapat menetapkan *username* pada awal sesi komunikasi.
+* **Terminasi Program yang Stabil:** Sesi koneksi dapat diakhiri secara terkendali (*gracefully*) oleh kedua belah pihak, memastikan stabilitas program.
 
-Setelah koneksi TCP berhasil dibuat, komunikasi menjadi **sepenuhnya dua arah (full-duplex)**.
+## 2. Arsitektur dan Desain Perangkat Lunak
 
-## 2. Struktur Direktori Proyek
+Arsitektur sistem ini dibangun di atas tiga komponen utama yang saling terintegrasi.
 
-```
-.
-├── src/
-│   ├── des.h           # Header untuk fungsi-fungsi DES
-│   ├── des.cpp         # Implementasi logika enkripsi/dekripsi DES
-│   ├── server.cpp      # Kode sumber Cross-Platform untuk server
-│   └── client.cpp      # Kode sumber Cross-Platform untuk client
-├── Makefile            # File instruksi kompilasi untuk `make` (Linux / Advanced)
-├── build.bat           # Skrip kompilasi untuk Windows
-├── key.txt             # File untuk menyimpan kunci DES (8 karakter ASCII)
-└── README.md           # Dokumentasi ini
-```
+### 2.1. Modul Kriptografi (DES)
 
-## 3. Prasyarat Lingkungan
+Komponen ini bertanggung jawab atas kerahasiaan data.
 
-*   **Sistem Operasi:** Windows atau Linux.
-*   **Kompiler C++:** `g++` (misalnya dari MinGW/MSYS2 di Windows, atau `build-essential` di Linux).
-*   **Jaringan:** Dua perangkat (fisik atau virtual) yang terhubung dalam satu jaringan (misalnya, LAN atau WLAN yang sama).
+* **Logika:** Implementasi algoritma DES terdapat pada `src/des.h` dan `src/des.cpp`.
+* **Mekanisme:** Sistem mengadopsi skema kriptografi kunci simetris. Sebuah kunci rahasia tunggal berukuran 8-byte, yang dibaca dari `key.txt`, digunakan untuk proses enkripsi pada sisi pengirim dan dekripsi pada sisi penerima.
 
-## 4. Cara Kompilasi
+### 2.2. Modul Jaringan (Soket TCP/IP)
 
-Pilih metode yang sesuai dengan sistem operasi Anda.
+Komponen ini mengelola konektivitas dan transmisi data antara dua entitas.
 
-### Metode 1: Windows (Cara Mudah)
+* **Model:** Sistem mengadopsi arsitektur *Client-Server*. Entitas *server* berfungsi sebagai *listener* pasif yang menunggu koneksi pada *port* yang ditentukan, sementara entitas *client* secara aktif menginisiasi koneksi ke alamat IP dan *port* server.
+* **Protokol:** Digunakan protokol TCP/IP yang bersifat *connection-oriented* untuk menjamin reliabilitas, integritas, dan keterurutan pengiriman data.
+* **Implementasi Lintas Platform:** Kode sumber memanfaatkan direktif *preprocessor* (`#ifdef _WIN32`) untuk menggunakan pustaka yang sesuai pada setiap sistem operasi (Winsock untuk Windows, POSIX Sockets untuk Linux).
+* **Optimalisasi Soket:** Opsi `SO_REUSEADDR` diaktifkan pada soket *server* untuk memitigasi error `Address already in use` dan meningkatkan reliabilitas saat server perlu di-restart.
 
-1.  Pastikan Anda memiliki `g++` yang terinstal dan dapat diakses dari terminal.
-2.  Buka Command Prompt atau PowerShell di direktori utama proyek.
-3.  Jalankan skrip `build.bat`:
+### 2.3. Model Konkurensi (Multithreading)
 
-    ```sh
-    .\build.bat
-    ```
+Untuk mencapai komunikasi dua arah yang simultan, sistem menerapkan model eksekusi konkuren menggunakan `std::thread`.
 
-4.  Ini akan menghasilkan `server.exe` dan `client.exe`.
+* **Thread Utama:** Didedikasikan untuk menangani input dari pengguna melalui `std::getline` dan mengirimkan data yang telah dienkripsi ke jaringan.
+* **Thread Penerima:** Dijalankan secara terpisah di latar belakang. *Thread* ini secara eksklusif bertugas untuk menunggu data masuk dari soket (`recv()`). Ketika data diterima, *thread* ini akan melakukan dekripsi dan menampilkannya ke konsol.
+* **Sinkronisasi:** Sebuah `std::mutex` diimplementasikan untuk mengatur akses ke sumber daya bersama, yaitu `std::cout`. Ini mencegah terjadinya *race condition* yang dapat merusak tampilan output di konsol.
 
-### Metode 2: Linux atau Windows dengan `make`
+### 2.4. Penanganan Koneksi dan Terminasi
 
-1.  Pastikan Anda memiliki `g++` dan `make`.
-2.  Buka terminal di direktori utama proyek.
-3.  Jalankan perintah `make`:
+Sistem dirancang untuk dapat melakukan terminasi sesi secara bersih.
 
-    ```sh
-    make
-    ```
+* **Mekanisme:** Ketika koneksi berakhir (baik karena perintah `exit` maupun karena terputus), *thread* penerima tidak mematikan program secara paksa. Sebaliknya, ia akan memicu `std::getline` pada *thread* utama untuk berhenti memblokir. Hal ini memungkinkan *thread* utama untuk keluar dari *loop*-nya secara alami, melakukan pembersihan sumber daya (seperti penutupan soket), dan mengakhiri program dengan stabil.
 
-4.  Ini akan menghasilkan `server` dan `client` (di Linux) atau `server.exe` dan `client.exe` (di Windows).
+## 3. Panduan Kompilasi dan Operasional
 
-## 5. Cara Penggunaan
+### 3.1. Prasyarat Sistem
 
-### 5.1. Persiapan Kunci
+* **Sistem Operasi:** Windows atau distribusi Linux.
+* **Kompiler:** `g++` (bagian dari MinGW-w64 di Windows atau `build-essential` di Linux).
+* **Utilitas `make`:** Direkomendasikan untuk kompilasi di lingkungan Linux.
 
-*   Buka file `key.txt`.
-*   Isi file tersebut dengan sebuah kunci rahasia yang terdiri dari **tepat 8 karakter ASCII**. Contoh: `kunci123`.
-*   Pastikan file `key.txt` ini identik di kedua perangkat.
+### 3.2. Prosedur Kompilasi
 
-### 5.2. Menjalankan Server
+Navigasikan ke direktori root proyek melalui terminal atau command prompt.
 
-1.  Di perangkat pertama, buka terminal dan masuk ke direktori proyek.
-2.  **Cari tahu alamat IP lokal perangkat:**
-    *   Di **Windows:** Jalankan `ipconfig` dan cari alamat "IPv4 Address".
-    *   Di **Linux:** Jalankan `ip addr` atau `hostname -I` dan cari alamat IP Anda.
-3.  **Jalankan server** dengan menentukan *port* (misal: `8080`).
-    *   Di **Windows:**
-        ```sh
-        .\server.exe 8080
-        ```
-    *   Di **Linux:**
-        ```sh
-        ./server 8080
-        ```
-4.  Server akan menampilkan pesan bahwa ia sedang menunggu koneksi.
+* **Pada Windows:**
 
-### 5.3. Menjalankan Klien dan Memulai Chat
+  ```sh
+  .\build.bat
+  ```
 
-1.  Di perangkat kedua, buka terminal dan masuk ke direktori proyek.
-2.  **Jalankan klien** dengan memasukkan **alamat IP server** dan **port** yang sama.
-    *   Di **Windows:** (Ganti `192.168.1.10` dengan IP server)
-        ```sh
-        .\client.exe 192.168.1.10 8080
-        ```
-    *   Di **Linux:** (Ganti `192.168.1.10` dengan IP server)
-        ```sh
-        ./client 192.168.1.10 8080
-        ```
-3.  Setelah koneksi berhasil, kedua pengguna (server dan klien) akan diminta untuk **memasukkan username** mereka masing-masing.
-4.  Setelah keduanya memasukkan username, chat akan dimulai. Pesan akan ditampilkan dengan format `Username: Pesan`.
-5.  Ketik pesan di salah satu terminal, tekan Enter, dan pesan akan muncul di terminal lainnya.
-6.  Untuk mengakhiri sesi, ketik `exit` di salah satu terminal.
+  Perintah ini akan menghasilkan `server.exe` dan `client.exe`.
+* **Pada Linux:**
+
+  ```sh
+  make
+  ```
+
+  Perintah ini akan menghasilkan *executable* `server` dan `client`.
+
+### 3.3. Prosedur Operasional
+
+1. **Konfigurasi Kunci:** Sunting file `key.txt` dan isi dengan kunci rahasia berukuran **tepat 8 karakter**. Pastikan file ini identik pada kedua sistem.
+2. **Inisiasi Server:** Pada mesin pertama, jalankan *executable* server dengan argumen berupa nomor *port*.
+
+   * Contoh:
+     ```sh
+     # Windows
+     .\server.exe 8080
+
+     # Linux
+     ./server 8080
+     ```
+3. **Inisiasi Client:** Pada mesin kedua, jalankan *executable* client dengan argumen berupa alamat IP server dan nomor *port* yang sama.
+
+   * Contoh (asumsi IP server adalah `192.168.1.5`):
+     ```sh
+     # Windows
+     .\client.exe 192.168.1.5 8080
+
+     # Linux
+     ./client 192.168.1.5 8080
+     ```
+4. **Sesi Komunikasi:** Setelah koneksi terjalin, kedua pengguna akan diminta memasukkan *username*. Selanjutnya, pertukaran pesan dapat dilakukan. Sesi dapat diakhiri dengan mengetik `exit`.
+
+---
