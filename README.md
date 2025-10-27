@@ -107,6 +107,7 @@ Pilih metode yang sesuai dengan sistem operasi Anda.
         ```sh
         ./client 192.168.1.10 8080
         ```
-3.  Jika koneksi berhasil, kedua terminal akan menampilkan pesan bahwa chat telah dimulai.
-4.  Ketik pesan di salah satu terminal, tekan Enter, dan pesan akan muncul di terminal lainnya.
-5.  Untuk mengakhiri sesi, ketik `exit` di salah satu terminal.
+3.  Setelah koneksi berhasil, kedua pengguna (server dan klien) akan diminta untuk **memasukkan username** mereka masing-masing.
+4.  Setelah keduanya memasukkan username, chat akan dimulai. Pesan akan ditampilkan dengan format `Username: Pesan`.
+5.  Ketik pesan di salah satu terminal, tekan Enter, dan pesan akan muncul di terminal lainnya.
+6.  Untuk mengakhiri sesi, ketik `exit` di salah satu terminal.
