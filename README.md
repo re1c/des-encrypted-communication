@@ -1,6 +1,6 @@
-# Implementasi Komunikasi Client-Server Terenkripsi DES
+# Implementasi Komunikasi Client-Server Terenkripsi DES (Cross-Platform)
 
-Proyek ini adalah implementasi sistem komunikasi dua arah (bidirectional) antara dua *device* yang diamankan menggunakan algoritma enkripsi **Data Encryption Standard (DES)**. Sistem ini dibangun dengan arsitektur **Client-Server** menggunakan C++ dan library **Winsock** untuk komunikasi jaringan berbasis TCP.
+Proyek ini adalah implementasi sistem komunikasi dua arah (*bidirectional*) antara dua *device* yang diamankan menggunakan algoritma enkripsi **Data Encryption Standard (DES)**. Sistem ini dibangun dengan arsitektur **Client-Server** menggunakan C++, kompatibel untuk **Windows** dan **Linux**.
 
 | Nama                   | NRP        | Kelas |
 | ---------------------- | ---------- | ----- |
@@ -13,17 +13,13 @@ Proyek ini adalah implementasi sistem komunikasi dua arah (bidirectional) antara
 
 Sistem ini terdiri dari dua komponen utama:
 
-1.  **Server (`server.exe`):**
-    *   Berperan sebagai pendengar pasif.
-    *   Ketika dijalankan, server akan membuka *port* jaringan dan menunggu koneksi masuk dari klien.
-    *   Setelah klien terhubung, server dapat menerima pesan terenkripsi, mendekripsinya, dan mengirim balasan yang terenkripsi.
+1.  **Server (`server.exe` di Windows, `server` di Linux):**
+    *   Berperan sebagai pendengar pasif. Menunggu koneksi masuk dari klien pada *port* jaringan yang ditentukan.
 
-2.  **Client (`client.exe`):**
-    *   Berperan sebagai penghubung aktif.
-    *   Ketika dijalankan, klien akan mencoba terhubung ke alamat IP dan *port* yang ditentukan pengguna.
-    *   Setelah terhubung, klien dapat mengirim pesan terenkripsi, menerima balasan terenkripsi dari server, dan mendekripsinya.
+2.  **Client (`client.exe` di Windows, `client` di Linux):**
+    *   Berperan sebagai penghubung aktif. Menghubungi alamat IP dan *port* server untuk memulai komunikasi.
 
-Setelah koneksi TCP berhasil dibuat, komunikasi menjadi **sepenuhnya dua arah (full-duplex)**, di mana kedua belah pihak dapat mengirim dan menerima pesan secara bergantian.
+Setelah koneksi TCP berhasil dibuat, komunikasi menjadi **sepenuhnya dua arah (full-duplex)**.
 
 ## 2. Struktur Direktori Proyek
 
@@ -32,29 +28,47 @@ Setelah koneksi TCP berhasil dibuat, komunikasi menjadi **sepenuhnya dua arah (f
 ├── src/
 │   ├── des.h           # Header untuk fungsi-fungsi DES
 │   ├── des.cpp         # Implementasi logika enkripsi/dekripsi DES
-│   ├── server.cpp      # Kode sumber untuk program server
-│   └── client.cpp      # Kode sumber untuk program client
-├── build.bat           # Skrip untuk kompilasi server dan client
+│   ├── server.cpp      # Kode sumber Cross-Platform untuk server
+│   └── client.cpp      # Kode sumber Cross-Platform untuk client
+├── Makefile            # File instruksi kompilasi untuk `make` (Linux / Advanced)
+├── build.bat           # Skrip kompilasi untuk Windows
 ├── key.txt             # File untuk menyimpan kunci DES (8 karakter ASCII)
 └── README.md           # Dokumentasi ini
 ```
 
 ## 3. Prasyarat Lingkungan
 
-*   **Sistem Operasi:** Windows (karena menggunakan library Winsock).
-*   **Kompiler C++:** g++ (MinGW) atau kompiler lain yang kompatibel. Pastikan `g++` ada di PATH environment variable Anda.
-*   **Jaringan:** Dua perangkat (fisik atau virtual) yang terhubung dalam satu jaringan (misalnya, LAN atau WLAN yang sama) agar bisa saling berkomunikasi melalui alamat IP lokal.
+*   **Sistem Operasi:** Windows atau Linux.
+*   **Kompiler C++:** `g++` (misalnya dari MinGW/MSYS2 di Windows, atau `build-essential` di Linux).
+*   **Jaringan:** Dua perangkat (fisik atau virtual) yang terhubung dalam satu jaringan (misalnya, LAN atau WLAN yang sama).
 
 ## 4. Cara Kompilasi
 
-1.  Buka terminal (Command Prompt atau PowerShell) di direktori utama proyek (`des-encrypted-communication`).
-2.  Jalankan skrip kompilasi:
+Pilih metode yang sesuai dengan sistem operasi Anda.
+
+### Metode 1: Windows (Cara Mudah)
+
+1.  Pastikan Anda memiliki `g++` yang terinstal dan dapat diakses dari terminal.
+2.  Buka Command Prompt atau PowerShell di direktori utama proyek.
+3.  Jalankan skrip `build.bat`:
 
     ```sh
     .\build.bat
     ```
 
-3.  Jika berhasil, akan ada dua file baru yang dihasilkan di direktori utama: `server.exe` dan `client.exe`.
+4.  Ini akan menghasilkan `server.exe` dan `client.exe`.
+
+### Metode 2: Linux atau Windows dengan `make`
+
+1.  Pastikan Anda memiliki `g++` dan `make`.
+2.  Buka terminal di direktori utama proyek.
+3.  Jalankan perintah `make`:
+
+    ```sh
+    make
+    ```
+
+4.  Ini akan menghasilkan `server` dan `client` (di Linux) atau `server.exe` dan `client.exe` (di Windows).
 
 ## 5. Cara Penggunaan
 
@@ -62,36 +76,37 @@ Setelah koneksi TCP berhasil dibuat, komunikasi menjadi **sepenuhnya dua arah (f
 
 *   Buka file `key.txt`.
 *   Isi file tersebut dengan sebuah kunci rahasia yang terdiri dari **tepat 8 karakter ASCII**. Contoh: `kunci123`.
-*   Pastikan file `key.txt` ini sama persis di kedua perangkat (perangkat server dan perangkat klien).
+*   Pastikan file `key.txt` ini identik di kedua perangkat.
 
 ### 5.2. Menjalankan Server
 
-1.  Di perangkat pertama, buka terminal.
-2.  Cari tahu alamat IP lokal perangkat tersebut. Buka Command Prompt dan ketik `ipconfig`. Cari alamat IPv4 Anda (misalnya, `192.168.1.10`).
-3.  Jalankan `server.exe` dengan menentukan *port* yang akan digunakan. Port `8080` adalah pilihan umum.
-
-    ```sh
-    .\server.exe 8080
-    ```
-
-4.  Server akan menampilkan pesan bahwa ia sedang menunggu koneksi di alamat IP dan port tersebut.
+1.  Di perangkat pertama, buka terminal dan masuk ke direktori proyek.
+2.  **Cari tahu alamat IP lokal perangkat:**
+    *   Di **Windows:** Jalankan `ipconfig` dan cari alamat "IPv4 Address".
+    *   Di **Linux:** Jalankan `ip addr` atau `hostname -I` dan cari alamat IP Anda.
+3.  **Jalankan server** dengan menentukan *port* (misal: `8080`).
+    *   Di **Windows:**
+        ```sh
+        .\server.exe 8080
+        ```
+    *   Di **Linux:**
+        ```sh
+        ./server 8080
+        ```
+4.  Server akan menampilkan pesan bahwa ia sedang menunggu koneksi.
 
 ### 5.3. Menjalankan Klien dan Memulai Chat
 
-1.  Di perangkat kedua, buka terminal.
-2.  Jalankan `client.exe` dengan memasukkan **alamat IP server** dan **port** yang sama.
-
-    ```sh
-    .\client.exe 192.168.1.10 8080
-    ```
-    *(Ganti `192.168.1.10` dengan alamat IP server yang sebenarnya)*
-
-3.  Jika koneksi berhasil, kedua terminal (klien dan server) akan menampilkan pesan bahwa chat telah dimulai.
-4.  Anda sekarang dapat mengetik pesan di salah satu terminal, tekan Enter, dan pesan tersebut akan muncul di terminal lainnya setelah dienkripsi, dikirim, dan didekripsi.
+1.  Di perangkat kedua, buka terminal dan masuk ke direktori proyek.
+2.  **Jalankan klien** dengan memasukkan **alamat IP server** dan **port** yang sama.
+    *   Di **Windows:** (Ganti `192.168.1.10` dengan IP server)
+        ```sh
+        .\client.exe 192.168.1.10 8080
+        ```
+    *   Di **Linux:** (Ganti `192.168.1.10` dengan IP server)
+        ```sh
+        ./client 192.168.1.10 8080
+        ```
+3.  Jika koneksi berhasil, kedua terminal akan menampilkan pesan bahwa chat telah dimulai.
+4.  Ketik pesan di salah satu terminal, tekan Enter, dan pesan akan muncul di terminal lainnya.
 5.  Untuk mengakhiri sesi, ketik `exit` di salah satu terminal.
-
-## 6. Detail Implementasi Teknis
-
-*   **Adaptasi DES:** Logika DES dari Tugas 1 diadaptasi untuk bekerja dengan `std::string` di memori, bukan file.
-*   **Padding:** Algoritma DES beroperasi pada blok 64-bit (8 byte). Untuk mengenkripsi pesan yang panjangnya bukan kelipatan 8, standar **PKCS#5 Padding** diimplementasikan. Sebelum enkripsi, byte tambahan ditambahkan untuk mencapai panjang kelipatan 8. Setelah dekripsi, byte-byte ini dihapus.
-*   **Networking:** Komunikasi jaringan ditangani oleh **Winsock API**. Server menggunakan alur `socket() -> bind() -> listen() -> accept()`, sementara klien menggunakan `socket() -> connect()`. Pengiriman dan penerimaan data dilakukan dengan `send()` dan `recv()`.
