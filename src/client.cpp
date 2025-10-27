@@ -2,15 +2,52 @@
 #include <string>
 #include <vector>
 #include <fstream>
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include "des.h"
 
-#pragma comment(lib, "ws2_32.lib")
+// --- Cross-Platform Socket Headers ---
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
+    typedef SOCKET socket_t;
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h> // untuk close()
+    typedef int socket_t;
+    #define INVALID_SOCKET -1
+    #define SOCKET_ERROR -1
+    #define closesocket(s) close(s)
+#endif
+
+// --- Fungsi Bantuan Jaringan ---
+
+void init_sockets() {
+#ifdef _WIN32
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Error: WSAStartup failed" << std::endl;
+        exit(1);
+    }
+#endif
+}
+
+void cleanup_sockets() {
+#ifdef _WIN32
+    WSACleanup();
+#endif
+}
 
 void print_error(const std::string& message) {
+#ifdef _WIN32
     std::cerr << "Error: " << message << " - " << WSAGetLastError() << std::endl;
+#else
+    perror(("Error: " + message).c_str());
+#endif
 }
+
+// --- Main Program ---
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
@@ -18,7 +55,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 1. Baca Kunci dari file
+    // 1. Baca Kunci
     std::string key;
     std::ifstream key_file("key.txt");
     if (!key_file) {
@@ -31,70 +68,66 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 2. Inisialisasi Winsock
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        print_error("WSAStartup failed");
-        return 1;
-    }
+    init_sockets();
 
-    // 3. Buat Socket
-    SOCKET client_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    // 2. Buat Socket
+    socket_t client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket == INVALID_SOCKET) {
         print_error("Socket creation failed");
-        WSACleanup();
+        cleanup_sockets();
         return 1;
     }
 
-    // 4. Connect ke Server
+    // 3. Connect ke Server
     const char* server_ip = argv[1];
     int port = std::stoi(argv[2]);
     sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
 
-    if (connect(client_socket, (SOCKADDR*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
+#ifdef _WIN32
+    inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
+#else
+    if (inet_addr(server_ip) == INADDR_NONE) {
+        std::cerr << "Error: Invalid IP address" << std::endl;
+        closesocket(client_socket);
+        cleanup_sockets();
+        return 1;
+    }
+    server_addr.sin_addr.s_addr = inet_addr(server_ip);
+#endif
+
+    if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
         print_error("Connect failed");
         closesocket(client_socket);
-        WSACleanup();
+        cleanup_sockets();
         return 1;
     }
 
     std::cout << "Connected to server. You can start the chat now." << std::endl;
     std::cout << "Type 'exit' to end the session." << std::endl;
 
-    // 5. Loop Komunikasi
+    // 4. Loop Komunikasi
     char buffer[4096];
     std::string message;
     while (true) {
-        // Mengirim pesan ke server
         std::cout << "Client: ";
         std::getline(std::cin, message);
         try {
             std::string encrypted_message = des_encrypt(message, key);
-            int bytes_sent = send(client_socket, encrypted_message.c_str(), encrypted_message.length(), 0);
-            if (bytes_sent == SOCKET_ERROR) {
-                print_error("send failed");
-                break;
-            }
-            if (message == "exit") {
-                break;
-            }
+            send(client_socket, encrypted_message.c_str(), encrypted_message.length(), 0);
+            if (message == "exit") break;
         } catch (const std::exception& e) {
             std::cerr << "Encryption failed: " << e.what() << std::endl;
         }
 
-        // Menerima balasan dari server
         int bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
         if (bytes_received > 0) {
             std::string encrypted_response(buffer, bytes_received);
             try {
                 std::string decrypted_response = des_decrypt(encrypted_response, key);
                 std::cout << "Server: " << decrypted_response << std::endl;
-                if (decrypted_response == "exit") {
-                    break;
-                }
+                if (decrypted_response == "exit") break;
             } catch (const std::exception& e) {
                 std::cerr << "Decryption failed: " << e.what() << std::endl;
             }
@@ -107,9 +140,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // 6. Cleanup
+    // 5. Cleanup
     closesocket(client_socket);
-    WSACleanup();
+    cleanup_sockets();
     std::cout << "Connection closed." << std::endl;
 
     return 0;
