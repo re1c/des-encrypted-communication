@@ -1,0 +1,6 @@
+@echo off
+echo Compiling server.cpp...
+g++ -std=c++11 -o server.exe src/server.cpp src/des.cpp -lws2_32
+echo Compiling client.cpp...
+g++ -std=c++11 -o client.exe src/client.cpp src/des.cpp -lws2_32
+echo Done.
