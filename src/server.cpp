@@ -4,6 +4,7 @@
 #include <fstream>
 #include <thread>
 #include <mutex>
+#include <csignal>
 #include "des.h"
 
 // --- Cross-Platform Socket Headers ---
@@ -14,7 +15,7 @@
     typedef SOCKET socket_t;
 #else
     #include <sys/socket.h>
-    #include <netinet/in.h>
+    #include <netinet/in.h> 
     #include <arpa/inet.h>
     #include <unistd.h> // untuk close() dan gethostname()
     #include <netdb.h> // untuk gethostbyname()
@@ -26,8 +27,28 @@
 
 // --- Global Variables ---
 std::mutex cout_mutex;
+socket_t listen_socket = INVALID_SOCKET;
+socket_t client_socket = INVALID_SOCKET;
 
 // --- Fungsi Bantuan Jaringan ---
+
+void cleanup_sockets() {
+#ifdef _WIN32
+    WSACleanup();
+#endif
+}
+
+void handle_signal(int signum) {
+    std::cout << "\nCaught signal " << signum << ". Shutting down gracefully." << std::endl;
+    if (client_socket != INVALID_SOCKET) {
+        closesocket(client_socket);
+    }
+    if (listen_socket != INVALID_SOCKET) {
+        closesocket(listen_socket);
+    }
+    cleanup_sockets();
+    exit(signum);
+}
 
 void init_sockets() {
 #ifdef _WIN32
@@ -36,12 +57,6 @@ void init_sockets() {
         std::cerr << "Error: WSAStartup failed" << std::endl;
         exit(1);
     }
-#endif
-}
-
-void cleanup_sockets() {
-#ifdef _WIN32
-    WSACleanup();
 #endif
 }
 
@@ -67,7 +82,7 @@ std::string get_local_ip() {
 }
 
 // --- Thread untuk Menerima Pesan ---
-void receive_thread(socket_t socket, const std::string& key, const std::string& my_username, const std::string& peer_username) {
+void receive_thread(socket_t socket, const std::string& key, const std::string& peer_username) {
     char buffer[4096];
     while (true) {
         int bytes_received = recv(socket, buffer, sizeof(buffer), 0);
@@ -75,19 +90,24 @@ void receive_thread(socket_t socket, const std::string& key, const std::string& 
             std::string encrypted_msg(buffer, bytes_received);
             try {
                 std::string decrypted_msg = des_decrypt(encrypted_msg, key);
-                std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cout << "\r" << peer_username << ": " << decrypted_msg << std::endl << my_username << ": ";
+                {
+                    std::lock_guard<std::mutex> lock(cout_mutex);
+                    std::cout << peer_username << ": " << decrypted_msg << std::endl;
+                }
+
                 if (decrypted_msg == "exit") {
                     closesocket(socket);
-                    exit(0);
+                    exit(0); 
                 }
             } catch (const std::exception& e) {
                 std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cerr << "\rDecryption failed: " << e.what() << std::endl << my_username << ": ";
+                std::cerr << "Decryption failed for incoming message: " << e.what() << std::endl;
             }
         } else if (bytes_received == 0) {
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            std::cout << "\r" << peer_username << " disconnected." << std::endl;
+            {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cout << peer_username << " disconnected." << std::endl;
+            }
             closesocket(socket);
             exit(0);
         } else {
@@ -130,12 +150,22 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    signal(SIGINT, handle_signal);
     init_sockets();
 
     // 2. Buat & Bind Socket
-    socket_t listen_socket = socket(AF_INET, SOCK_STREAM, 0);
+    listen_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_socket == INVALID_SOCKET) {
         print_error("Socket creation failed");
+        cleanup_sockets();
+        return 1;
+    }
+
+    // Izinkan penggunaan ulang alamat (mencegah error "Address already in use")
+    int opt = 1;
+    if (setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt)) == SOCKET_ERROR) {
+        print_error("setsockopt(SO_REUSEADDR) failed");
+        closesocket(listen_socket);
         cleanup_sockets();
         return 1;
     }
@@ -165,7 +195,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Waiting for a client to connect..." << std::endl;
 
     // 4. Accept
-    socket_t client_socket = accept(listen_socket, NULL, NULL);
+    client_socket = accept(listen_socket, NULL, NULL);
     if (client_socket == INVALID_SOCKET) {
         print_error("Accept failed");
         closesocket(listen_socket);
@@ -199,14 +229,17 @@ int main(int argc, char* argv[]) {
     std::cout << "You are now chatting with " << client_username << ". Type 'exit' to end." << std::endl;
 
     // 6. Buat dan jalankan thread penerima
-    std::thread receiver(receive_thread, client_socket, key, my_username, client_username);
+    std::thread receiver(receive_thread, client_socket, key, client_username);
     receiver.detach();
 
     // 7. Loop Komunikasi (Hanya Mengirim)
     std::string message;
-    while (true) {
-        std::cout << my_username << ": ";
-        std::getline(std::cin, message);
+    while (std::getline(std::cin, message)) {
+        {
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cout << my_username << ": " << message << std::endl;
+        }
+
         try {
             std::string encrypted_response = des_encrypt(message, key);
             if (send(client_socket, encrypted_response.c_str(), encrypted_response.length(), 0) == SOCKET_ERROR) {
@@ -217,7 +250,8 @@ int main(int argc, char* argv[]) {
                 break;
             }
         } catch (const std::exception& e) {
-            std::cerr << "Encryption failed: " << e.what() << std::endl;
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "Encryption failed for outgoing message: " << e.what() << std::endl;
         }
     }
 
