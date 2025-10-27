@@ -9,6 +9,8 @@
 
 // --- Cross-Platform Socket Headers ---
 #ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
     #include <winsock2.h>
     #include <ws2tcpip.h>
     #pragma comment(lib, "ws2_32.lib")
@@ -19,6 +21,8 @@
     #include <arpa/inet.h>
     #include <unistd.h> // untuk close() dan gethostname()
     #include <netdb.h> // untuk gethostbyname()
+    #include <sys/ioctl.h>
+    #include <fcntl.h>
     typedef int socket_t;
     #define INVALID_SOCKET -1
     #define SOCKET_ERROR -1
@@ -82,49 +86,52 @@ std::string get_local_ip() {
 }
 
 // --- Thread untuk Menerima Pesan ---
-void receive_thread(socket_t socket, const std::string& key, const std::string& peer_username) {
+void receive_thread(const std::string& key, const std::string& peer_username) {
     char buffer[4096];
     while (true) {
-        int bytes_received = recv(socket, buffer, sizeof(buffer), 0);
-        if (bytes_received > 0) {
-            std::string encrypted_msg(buffer, bytes_received);
-            try {
-                std::string decrypted_msg = des_decrypt(encrypted_msg, key);
-                {
-                    std::lock_guard<std::mutex> lock(cout_mutex);
-                    std::cout << std::endl << peer_username << ": " << decrypted_msg << std::endl;
-                }
-
-                if (decrypted_msg == "exit") {
-                    closesocket(socket);
-                    exit(0); 
-                }
-            } catch (const std::exception& e) {
-                std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cerr << "Decryption failed for incoming message: " << e.what() << std::endl;
-            }
-        } else if (bytes_received == 0) {
+        int bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
+        
+        // Kondisi untuk berhenti
+        if (bytes_received <= 0) {
             {
                 std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cout << std::endl << peer_username << " disconnected." << std::endl;
+                std::cout << std::endl << peer_username << " disconnected. Press Enter to exit." << std::endl;
             }
-            closesocket(socket);
-            exit(0);
-        } else {
             #ifdef _WIN32
-                int error_code = WSAGetLastError();
-                if (error_code != WSAEWOULDBLOCK) {
-                    print_error("recv failed");
-                    closesocket(socket);
-                    exit(1);
-                }
+                // Workaround untuk unblock getline di Windows
+                INPUT_RECORD r[1] = {}; 
+                r[0].EventType = KEY_EVENT; 
+                r[0].Event.KeyEvent.bKeyDown = TRUE; 
+                r[0].Event.KeyEvent.wVirtualKeyCode = VK_RETURN; 
+                DWORD written;
+                WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), r, 1, &written);
             #else
-                if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                    print_error("recv failed");
-                    closesocket(socket);
-                    exit(1);
-                }
+                // Cara standar untuk unblock getline di POSIX
+                shutdown(STDIN_FILENO, SHUT_RD);
             #endif
+            return; // Keluar dari thread
+        }
+
+        std::string encrypted_msg(buffer, bytes_received);
+        try {
+            std::string decrypted_msg = des_decrypt(encrypted_msg, key);
+            {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cout << std::endl << peer_username << ": " << decrypted_msg << std::endl;
+            }
+
+            if (decrypted_msg == "exit") {
+                // Pihak lain ingin keluar, unblock getline di main thread
+                #ifdef _WIN32
+                    INPUT_RECORD r[1] = {}; r[0].EventType = KEY_EVENT; r[0].Event.KeyEvent.bKeyDown = TRUE; r[0].Event.KeyEvent.wVirtualKeyCode = VK_RETURN; DWORD written; WriteConsoleInput(GetStdHandle(STD_INPUT_HANDLE), r, 1, &written);
+                #else
+                    shutdown(STDIN_FILENO, SHUT_RD);
+                #endif
+                return; // Keluar dari thread
+            }
+        } catch (const std::exception& e) {
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "Decryption failed for incoming message: " << e.what() << std::endl;
         }
     }
 }
@@ -204,6 +211,7 @@ int main(int argc, char* argv[]) {
     }
 
     closesocket(listen_socket);
+    listen_socket = INVALID_SOCKET; // Tandai sudah tidak valid
     std::cout << "Client connected." << std::endl;
 
     // 5. Tukar Username
@@ -235,6 +243,8 @@ int main(int argc, char* argv[]) {
     // 7. Loop Komunikasi (Hanya Mengirim)
     std::string message;
     while (std::getline(std::cin, message)) {
+        if (client_socket == INVALID_SOCKET) break; // Keluar jika socket sudah ditutup oleh thread lain
+
         {
             std::lock_guard<std::mutex> lock(cout_mutex);
             std::cout << my_username << ": " << message << std::endl;
@@ -256,27 +266,9 @@ int main(int argc, char* argv[]) {
     }
 
     // 8. Cleanup
-    closesocket(client_socket);
-    cleanup_sockets();
-    std::cout << "Connection closed." << std::endl;
-
-    return 0;
-}
-ncrypted_response.c_str(), encrypted_response.length(), 0) == SOCKET_ERROR) {
-                print_error("Send failed");
-                break;
-            }
-            if (message == "exit") {
-                break;
-            }
-        } catch (const std::exception& e) {
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            std::cerr << "Encryption failed for outgoing message: " << e.what() << std::endl;
-        }
+    if (client_socket != INVALID_SOCKET) {
+        closesocket(client_socket);
     }
-
-    // 8. Cleanup
-    closesocket(client_socket);
     cleanup_sockets();
     std::cout << "Connection closed." << std::endl;
 
