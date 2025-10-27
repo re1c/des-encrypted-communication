@@ -20,7 +20,7 @@ all: $(SERVER_EXEC) $(CLIENT_EXEC)
 # OS-specific settings
 ifeq ($(OS),Windows_NT)
     # Windows settings
-    LIBS = -lws2_32
+    LIBS = -lws2_32 -lpthread
     SERVER_EXEC := $(SERVER_EXEC).exe
     CLIENT_EXEC := $(CLIENT_EXEC).exe
     RM = del /Q
@@ -28,7 +28,7 @@ ifeq ($(OS),Windows_NT)
     fix_path = $(subst /,\,$(1))
 else
     # Linux/macOS settings
-    LIBS = 
+    LIBS = -pthread
     RM = rm -f
     fix_path = $(1)
 endif
