@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <thread>
+#include <mutex>
 #include "des.h"
 
 // --- Cross-Platform Socket Headers ---
@@ -21,6 +23,9 @@
     #define SOCKET_ERROR -1
     #define closesocket(s) close(s)
 #endif
+
+// --- Global Variables ---
+std::mutex cout_mutex;
 
 // --- Fungsi Bantuan Jaringan ---
 
@@ -59,6 +64,49 @@ std::string get_local_ip() {
     }
     char* ip_addr = inet_ntoa(*(struct in_addr*)*host_entry->h_addr_list);
     return std::string(ip_addr);
+}
+
+// --- Thread untuk Menerima Pesan ---
+void receive_thread(socket_t socket, const std::string& key, const std::string& my_username, const std::string& peer_username) {
+    char buffer[4096];
+    while (true) {
+        int bytes_received = recv(socket, buffer, sizeof(buffer), 0);
+        if (bytes_received > 0) {
+            std::string encrypted_msg(buffer, bytes_received);
+            try {
+                std::string decrypted_msg = des_decrypt(encrypted_msg, key);
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cout << "\r" << peer_username << ": " << decrypted_msg << std::endl << my_username << ": ";
+                if (decrypted_msg == "exit") {
+                    closesocket(socket);
+                    exit(0);
+                }
+            } catch (const std::exception& e) {
+                std::lock_guard<std::mutex> lock(cout_mutex);
+                std::cerr << "\rDecryption failed: " << e.what() << std::endl << my_username << ": ";
+            }
+        } else if (bytes_received == 0) {
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cout << "\r" << peer_username << " disconnected." << std::endl;
+            closesocket(socket);
+            exit(0);
+        } else {
+            #ifdef _WIN32
+                int error_code = WSAGetLastError();
+                if (error_code != WSAEWOULDBLOCK) {
+                    print_error("recv failed");
+                    closesocket(socket);
+                    exit(1);
+                }
+            #else
+                if (errno != EWOULDBLOCK && errno != EAGAIN) {
+                    print_error("recv failed");
+                    closesocket(socket);
+                    exit(1);
+                }
+            #endif
+        }
+    }
 }
 
 // --- Main Program ---
@@ -126,43 +174,54 @@ int main(int argc, char* argv[]) {
     }
 
     closesocket(listen_socket);
-    std::cout << "Client connected. You can start the chat now." << std::endl;
-    std::cout << "Type 'exit' to end the session." << std::endl;
+    std::cout << "Client connected." << std::endl;
 
-    // 5. Loop Komunikasi
-    char buffer[4096];
+    // 5. Tukar Username
+    std::string my_username, client_username;
+    std::cout << "Enter your username: ";
+    std::getline(std::cin, my_username);
+
+    // Terima username dari client
+    char buffer[1024];
+    int bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
+    if (bytes_received <= 0) {
+        print_error("Failed to receive username from client");
+        closesocket(client_socket);
+        cleanup_sockets();
+        return 1;
+    }
+    client_username = des_decrypt(std::string(buffer, bytes_received), key);
+
+    // Kirim username ke client
+    std::string encrypted_username = des_encrypt(my_username, key);
+    send(client_socket, encrypted_username.c_str(), encrypted_username.length(), 0);
+
+    std::cout << "You are now chatting with " << client_username << ". Type 'exit' to end." << std::endl;
+
+    // 6. Buat dan jalankan thread penerima
+    std::thread receiver(receive_thread, client_socket, key, my_username, client_username);
+    receiver.detach();
+
+    // 7. Loop Komunikasi (Hanya Mengirim)
     std::string message;
     while (true) {
-        int bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
-        if (bytes_received > 0) {
-            std::string encrypted_msg(buffer, bytes_received);
-            try {
-                std::string decrypted_msg = des_decrypt(encrypted_msg, key);
-                std::cout << "Client: " << decrypted_msg << std::endl;
-                if (decrypted_msg == "exit") break;
-            } catch (const std::exception& e) {
-                std::cerr << "Decryption failed: " << e.what() << std::endl;
-            }
-        } else if (bytes_received == 0) {
-            std::cout << "Client disconnected." << std::endl;
-            break;
-        } else {
-            print_error("recv failed");
-            break;
-        }
-
-        std::cout << "Server: ";
+        std::cout << my_username << ": ";
         std::getline(std::cin, message);
         try {
             std::string encrypted_response = des_encrypt(message, key);
-            send(client_socket, encrypted_response.c_str(), encrypted_response.length(), 0);
-            if (message == "exit") break;
+            if (send(client_socket, encrypted_response.c_str(), encrypted_response.length(), 0) == SOCKET_ERROR) {
+                print_error("Send failed");
+                break;
+            }
+            if (message == "exit") {
+                break;
+            }
         } catch (const std::exception& e) {
             std::cerr << "Encryption failed: " << e.what() << std::endl;
         }
     }
 
-    // 6. Cleanup
+    // 8. Cleanup
     closesocket(client_socket);
     cleanup_sockets();
     std::cout << "Connection closed." << std::endl;
