@@ -194,7 +194,7 @@ int main(int argc, char* argv[]) {
     std::cout << "You are now chatting with " << server_username << ". Type 'exit' to end." << std::endl;
 
     // 5. Buat dan jalankan thread penerima
-    std::thread receiver(receive_thread, client_socket, key, server_username);
+    std::thread receiver(receive_thread, key, server_username);
     receiver.detach();
 
     // 6. Loop Komunikasi (Hanya Mengirim)
@@ -207,6 +207,26 @@ int main(int argc, char* argv[]) {
         try {
             std::string encrypted_message = des_encrypt(message, key);
             if (send(client_socket, encrypted_message.c_str(), encrypted_message.length(), 0) == SOCKET_ERROR) {
+                print_error("Send failed");
+                break;
+            }
+            if (message == "exit") {
+                break;
+            }
+        } catch (const std::exception& e) {
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cerr << "Encryption failed for outgoing message: " << e.what() << std::endl;
+        }
+    }
+
+    // 7. Cleanup
+    closesocket(client_socket);
+    cleanup_sockets();
+    std::cout << "Connection closed." << std::endl;
+
+    return 0;
+}
+(), 0) == SOCKET_ERROR) {
                 print_error("Send failed");
                 break;
             }
