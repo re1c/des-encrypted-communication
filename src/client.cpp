@@ -74,7 +74,7 @@ void receive_thread(socket_t socket, const std::string& key, const std::string& 
                 std::string decrypted_response = des_decrypt(encrypted_response, key);
                 {
                     std::lock_guard<std::mutex> lock(cout_mutex);
-                    std::cout << peer_username << ": " << decrypted_response << std::endl;
+                    std::cout << std::endl << peer_username << ": " << decrypted_response << std::endl;
                 }
                 if (decrypted_response == "exit") {
                     closesocket(socket);
@@ -87,7 +87,7 @@ void receive_thread(socket_t socket, const std::string& key, const std::string& 
         } else if (bytes_received == 0) {
             {
                 std::lock_guard<std::mutex> lock(cout_mutex);
-                std::cout << peer_username << " disconnected." << std::endl;
+                std::cout << std::endl << peer_username << " disconnected." << std::endl;
             }
             closesocket(socket);
             exit(0);
